@@ -8,8 +8,10 @@ from . import book_management
 # Importa os módulos do banco de dados.
 from model.database import Tabular, engine, Usuario
 
-# Importa os módulos do ORN ( Objetct Relational Mapping) do SQLAlchemy
+# Importa os módulos do ORM ( Objetct Relational Mapping) do SQLAlchemy
 from sqlalchemy.orm import sessionmaker
+# Importa o módulo para a consulta de existência
+from sqlalchemy import select # <--- IMPORTAÇÃO ADICIONADA
 
 # Importa a biblioteca para manipular o sistema operacional.
 import os
@@ -37,7 +39,7 @@ def create_application():
     web_application.config['SESSION_COOKIE_SAMESITE'] ='Lax'
     web_application.config['SESSION_COOKIE_SECURE'] = True
 
-    # Converte o Python em SQL.
+    # Converte o Python em SQL (Cria as tabelas).
     Tabular.metadata.create_all(engine)
 
     # Feedback para o usuário.
@@ -49,29 +51,45 @@ def create_application():
     # Recurso responsável por executar os comandos no banco de dados.
     connection = Session()
 
-    # Criar um objeto de usuário (Administrador do software)
-    new_user = Usuario(
-        nome='Administrador da Librarium',
-        cpf='123.456.789-10',
-        nascimento=date(2000, 1, 1),
-        endereco='Servidor da Librarium',
-        telefone='(12) 34567-8910',
-        email='adminstrador@librarium.com.br',
-        senha=generate_password_hash('abc123!!', method='pbkdf2:sha256'),
-        perfil='Administrador'
-    )
+    # --- INÍCIO DA CORREÇÃO DE INTEGRIDADE ---
 
-    # Adiciona o novo usuário ao banco de dados.
-    connection.add(new_user)
+    admin_cpf = '123.456.789-10'
 
-    # Confirma a transação.
-    connection.commit()
+    # 1. Verifica se o usuário administrador JÁ EXISTE no banco.
+    # Usamos o `select` do SQLAlchemy 2.0 e `scalar_one_or_none()` para verificar a existência.
+    existing_user_query = select(Usuario).where(Usuario.cpf == admin_cpf)
+    existing_user = connection.scalar(existing_user_query)
 
+    # 2. Se o usuário NÃO existir, cria e insere.
+    if existing_user is None:
+        # Criar um objeto de usuário (Administrador do software)
+        new_user = Usuario(
+            nome='Administrador da Librarium',
+            cpf=admin_cpf, # Usa a variável
+            nascimento=date(2000, 1, 1),
+            endereco='Servidor da Librarium',
+            telefone='(12) 34567-8910',
+            email='adminstrador@librarium.com.br',
+            senha=generate_password_hash('abc123!!', method='pbkdf2:sha256'),
+            perfil='Administrador'
+        )
+
+        # Adiciona o novo usuário ao banco de dados.
+        connection.add(new_user)
+
+        # Confirma a transação.
+        connection.commit()
+
+        # Feedback para o usuário.
+        print('Usuário administrador criado com sucesso')
+    else:
+        # Feedback caso o usuário já exista
+        print('Usuário administrador JÁ EXISTE no banco. Nenhuma inserção realizada.')
+
+    # --- FIM DA CORREÇÃO DE INTEGRIDADE ---
+    
     # Fecha a conexão com o banco de dados.
     connection.close()
-
-    # Feedback para o usuário.
-    print('Usuário administrador criado com sucesso')
 
     # Retorna a aplicação web.
     return web_application
